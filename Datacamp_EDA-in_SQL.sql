@@ -394,3 +394,378 @@ SELECT measure,
        round(profits_change::numeric, 2) AS profits_change,
        round(revenues_change::numeric, 2) AS revenues_change
   FROM correlations;
+
+  -- Working with Categorigal data
+  SELECT priority, COUNT(*)
+  FROM evanston311
+  GROUP BY priority;
+
+-- Find values of zip that appear in at least 100 rows
+-- Also get the count of each value
+SELECT zip, COUNT(*)
+  FROM evanston311
+  GROUP BY zip
+  HAVING COUNT(*) >= 100;
+
+-- Find values of source that appear in at least 100 rows
+-- Also get the count of each value
+SELECT source, COUNT(*)
+  FROM evanston311
+ GROUP BY source
+HAVING COUNT(*) <= 100;
+
+SELECT street, COUNT(*)
+FROM evanston311
+GROUP BY street
+ORDER BY COUNT(*) DESC
+LIMIT 5;
+
+SELECT street, COUNT(*)
+FROM evanston311
+GROUP BY street
+ORDER BY street
+;
+
+SELECT trim('Wow!', '!wW') AS trimmed_string;
+
+SELECT trim('Wow!', '!') AS trimmed_string;
+
+SELECT trim(lower('Wow!'), '!w') AS trimmed_string;
+
+SELECT DISTINCT street,
+  trim(street, '0123456789 #/.') AS trimmed_street
+FROM evanston311
+ORDER BY street;
+
+-- Count rows
+SELECT description
+  FROM evanston311
+ -- Where description includes trash or garbage
+ WHERE description ILIKE '%trash%'
+    AND description ILIKE '%garbage%';
+
+-- Count rows
+SELECT COUNT(*)
+  FROM evanston311 
+ -- description contains trash or garbage (any case)
+ WHERE (description ILIKE '%trash%'
+    OR description ILIKE '%garbage%') 
+ -- category does not contain Trash or Garbage
+   AND category NOT LIKE '%Trash%'
+   AND category NOT LIKE '%Garbage%';
+
+SELECT left('abcde', 2) AS left_string,
+       right('abcde', 2) AS right_string,
+       substring('abcde', 2, 3) AS substring_string;
+
+SELECT substring('abcdef' FROM 2 FOR 3) AS substring_string;
+
+SELECT split_part('abcde', 'c', 1) AS split_part_string;
+
+SELECT split_part('ab,cd,e', ',', 3) AS split_part_string;
+
+SELECT split_part('cats and dogs and fish', ' and', 2);
+
+SELECT concat('a', 2, 'cc') AS concat_string;
+
+SELECT 'a' || 2 || 'cc' AS concat_string;
+
+-- Concatenate house_num, a space, and street and trim spaces from the start of the result
+SELECT LTRIM(CONCAT_WS(' ', house_num, street)) AS address
+  FROM evanston311;
+
+-- Select the first word of the street value
+SELECT split_part(street, ' ', 1) AS street_name, 
+       count(*)
+  FROM evanston311
+ GROUP BY street_name
+ ORDER BY count DESC
+ LIMIT 20;
+
+ -- Select the first 50 chars when length is greater than 50
+SELECT CASE WHEN length(description) > 50
+            THEN LEFT(description, 50 ) || '...'
+       -- otherwise just select description
+       ELSE description
+       END
+  FROM evanston311
+ -- limit to descriptions that start with the word I
+ WHERE description LIKE 'I %'
+ ORDER BY description;
+
+ SELECT CASE WHEN zipcount < 100 THEN 'other'
+       ELSE zip
+       END AS zip_recoded,
+       sum(zipcount) AS zipsum
+  FROM (SELECT zip, count(*) AS zipcount
+          FROM evanston311
+         GROUP BY zip) AS fullcounts
+ GROUP BY zip_recoded
+ ORDER BY zipsum DESC;
+
+ -- Create table and then replace values in column, then put back in original table
+DROP TABLE IF EXISTS recode;
+CREATE TEMP TABLE recode AS
+  SELECT DISTINCT category, 
+         rtrim(split_part(category, '-', 1)) AS standardized
+  FROM evanston311;
+UPDATE recode SET standardized='Trash Cart' 
+ WHERE standardized LIKE 'Trash%Cart';
+UPDATE recode SET standardized='Snow Removal' 
+ WHERE standardized LIKE 'Snow%Removal%';
+UPDATE recode SET standardized='UNUSED' 
+ WHERE standardized IN ('THIS REQUEST IS INACTIVE...Trash Cart', 
+               '(DO NOT USE) Water Bill',
+               'DO NOT USE Trash', 'NO LONGER IN USE');
+
+-- Select the recoded categories and the count of each
+SELECT standardized, COUNT(*)
+-- From the original table and table with recoded values
+  FROM evanston311 
+       LEFT JOIN recode 
+       -- What column do they have in common?
+       ON evanston311.category = recode.category
+ -- What do you need to group by to count?
+ GROUP BY standardized
+ -- Display the most common val values first
+ ORDER BY count(*) DESC;
+
+
+-- Create a table with indicator variables
+ -- To clear table if it already exists
+DROP TABLE IF EXISTS indicators;
+
+-- Create the temp table
+CREATE TEMP TABLE indicators AS
+  SELECT id, 
+         CAST (description LIKE '%@%' AS integer) AS email,
+         CAST (description LIKE '%___-___-____%' AS integer) AS phone 
+    FROM evanston311;
+  
+-- Select the column you'll group by
+SELECT priority,
+       -- Compute the proportion of rows with each indicator
+       SUM(email)/COUNT(*)::NUMERIC AS email_prop, 
+       SUM(phone)/COUNT(*)::NUMERIC AS phone_prop
+  -- Tables to select from
+  FROM evanston311
+       left JOIN indicators
+       -- Joining condition
+       ON evanston311.id=indicators.id
+ -- What are you grouping by?
+ GROUP BY priority;
+
+ SELECT NOW();
+
+ SELECT '2010.01.01'::date + 1;
+
+ SELECT '2018.12.23'::date + '1 year 2 days 3 minutes'::interval;
+
+ -- Count requests created on March 13, 2017
+SELECT count(*)
+  FROM evanston311
+ WHERE date_created >= '2017-03-13'
+   AND date_created < '2017-03-13'::date + '1 day'::interval;
+
+-- Select the current timestamp, 
+-- and the current timestamp + 5 minutes
+SELECT now(), now()+'5 minutes'::interval;
+
+-- Select the category and the average completion time by category
+SELECT category, 
+       AVG(date_completed-date_created) AS completion_time
+  FROM evanston311
+GROUP BY category
+-- Order the results
+ order by completion_time desc;
+
+ SELECT date_part('month', now()), EXTRACT(MONTH FROM now());
+
+ SELECT date_trunc('month', now());
+
+ -- Count requests completed by hour
+SELECT date_part('hour', date_completed) AS hour,
+       count(*) as count
+  FROM evanston311
+ GROUP BY hour
+ ORDER BY hour;
+
+-- Select name of the day of the week the request was created 
+SELECT to_char(date_created, 'day') AS day, 
+       -- Select avg time between request creation and completion
+       AVG(date_completed - date_created) AS duration
+  FROM evanston311 
+ -- Group by the name of the day of the week and 
+ -- integer value of day of week the request was created
+ GROUP BY day, EXTRACT(DOW FROM date_created)
+ -- Order by integer value of the day of the week 
+ -- the request was created
+ ORDER BY EXTRACT(DOW FROM date_created);
+
+ -- Aggregate daily counts by month
+SELECT date_trunc('month', day) AS month,
+       AVG(count)
+  -- Subquery to compute daily counts
+  FROM (SELECT date_trunc('day', date_created) AS day,
+               count(*) AS count
+          FROM evanston311
+         GROUP BY day) AS daily_count
+ GROUP BY month
+ ORDER BY month;
+
+ SELECT generate_series('2018-01-01', '2018-01-15', '2 days'::interval);
+
+ SELECT generate_series('2018-02-01', '2019-01-01', '1 month'::interval) - '1 day'::interval ;
+
+ WITH hour_series AS(
+   SELECT generate_series('2018-04-23 09:00:00', '2018-04-23 14:00:00', '1 hour'::interval) AS hours
+ )
+ SELECT hours, count(date_created)
+ FROM hour_series
+ LEFT JOIN evanston311
+ ON date_trunc('hour', date_created) = hours
+ GROUP BY hours
+ ORDER BY hours;
+
+WITH bins AS (
+  SELECT generate_series('2018-04-23 09:00:00', '2018-04-23 15:00:00', '3 hours'::interval) AS lower, 
+          generate_series('2018-04-23 12:00:00', '2018-04-23 18:00:00', '3 hours'::interval) AS upper
+)
+SELECT lower, upper, COUNT(date_created)
+FROM bins
+LEFT JOIN evanston311
+ON date_created >= lower AND date_created < upper
+GROUP BY lower, upper
+ORDER BY lower;
+
+SELECT day
+-- 1) Subquery to generate all dates
+-- from min to max date_created
+  FROM (SELECT generate_series(min(date_created),
+                               max(date_created),
+                               '1 day')::date AS day
+          -- What table is date_created in?
+          FROM evanston311) AS all_dates
+-- 4) Select dates (day from above) that are NOT IN the subquery
+ WHERE day NOT IN  
+       -- 2) Subquery to select all date_created values as dates
+       (SELECT date_created::date
+          FROM evanston311);
+
+-- Count number of requests made per day 
+SELECT day, count(date_created) AS count
+-- Use a daily series from 2016-01-01 to 2018-06-30 
+-- to include days with no requests
+  FROM (SELECT generate_series('2016-01-01',  -- series start date
+                               '2018-06-30',  -- series end date
+                               '1 day'::interval)::date AS day) AS daily_series
+       LEFT JOIN evanston311
+       -- match day from above (which is a date) to date_created
+       ON day = date_created::date
+ GROUP BY day;
+
+ -- Bins from Step 1
+WITH bins AS (
+	 SELECT generate_series('2016-01-01',
+                            '2018-01-01',
+                            '6 months'::interval) AS lower,
+            generate_series('2016-07-01',
+                            '2018-07-01',
+                            '6 months'::interval) AS upper),
+-- Daily counts from Step 2
+     daily_counts AS (
+     SELECT day, count(date_created) AS count
+       FROM (SELECT generate_series('2016-01-01',
+                                    '2018-06-30',
+                                    '1 day'::interval)::date AS day) AS daily_series
+            LEFT JOIN evanston311
+            ON day = date_created::date
+      GROUP BY day)
+-- Select bin bounds
+SELECT lower, 
+       upper, 
+       -- Compute median of count for each bin
+       percentile_disc(0.5) WITHIN GROUP (ORDER BY count) AS median
+  -- Join bins and daily_counts
+  FROM bins
+       LEFT JOIN daily_counts
+       -- Where the day is between the bin bounds
+       ON day >= lower
+          AND day < upper
+ -- Group by bin bounds
+ GROUP BY lower, upper
+ ORDER BY lower;
+
+ -- generate series with all days from 2016-01-01 to 2018-06-30
+WITH all_days AS 
+     (SELECT generate_series('2016-01-01',
+                             '2018-06-30',
+                             '1 day'::interval) AS date),
+     -- Subquery to compute daily counts
+     daily_count AS 
+     (SELECT date_trunc('day', date_created) AS day,
+             count(*) AS count
+        FROM evanston311
+       GROUP BY day)
+-- Aggregate daily counts by month using date_trunc
+SELECT date_trunc('month', date) AS month,
+       -- Use coalesce to replace NULL count values with 0
+       avg(coalesce(count, 0)) AS average
+  FROM all_days
+       LEFT JOIN daily_count
+       -- Joining condition
+       ON all_days.date=daily_count.day
+ GROUP BY month
+ ORDER BY month; 
+
+
+SELECT date_created,
+     LAG(date_created) OVER (ORDER BY date_created) AS previous_date,
+     LEAD(date_created) OVER (ORDER BY date_created) AS next_date,
+     date_created - LAG(date_created) OVER (ORDER BY date_created) AS gap
+FROM evanston311
+LIMIT 10;
+
+SELECT AVG(gap)
+FROM (
+  SELECT date_created::timestamp - LAG(date_created::timestamp) OVER (ORDER BY date_created) AS gap
+FROM evanston311
+) AS gaps;
+
+-- Compute the gaps
+WITH request_gaps AS (
+        SELECT date_created,
+               -- lead or lag
+               LAG(date_created) OVER (ORDER BY date_created) AS previous,
+               -- compute gap as date_created minus lead or lag
+               date_created - LAG(date_created) OVER (ORDER BY date_created) AS gap
+          FROM evanston311)
+-- Select the row with the maximum gap
+SELECT *
+  FROM request_gaps
+-- Subquery to select maximum gap from request_gaps
+ WHERE gap = (SELECT MAX(gap)
+                FROM request_gaps);
+
+                -- Compute monthly counts of requests created
+WITH created AS (
+       SELECT date_trunc('month', date_created) AS month,
+              count(*) AS created_count
+         FROM evanston311
+        WHERE category='Rodents- Rats'
+        GROUP BY month),
+-- Compute monthly counts of requests completed
+      completed AS (
+       SELECT date_trunc('month', date_completed) AS month,
+              count(*) AS completed_count
+         FROM evanston311
+        WHERE category='Rodents- Rats'
+        GROUP BY month)
+-- Join monthly created and completed counts
+SELECT created.month, 
+       created_count, 
+       completed_count
+  FROM created
+       INNER JOIN completed
+       ON created.month=completed.month
+ ORDER BY created.month;
